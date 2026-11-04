@@ -2,11 +2,11 @@ import 'package:flutter/material.dart';
 
 import '../../data/crowdtech_database.dart';
 import '../../models/crowd_models.dart';
-import '../../shared/database_error_view.dart';
 import '../../shared/data_record_details_page.dart';
 import '../../shared/data_record_list_page.dart';
-import 'news_comment_form_page.dart';
+import '../../shared/database_error_view.dart';
 import 'news_article_form_page.dart';
+import 'news_comment_form_page.dart';
 import 'news_management_page.dart';
 
 class NewsScreen extends StatefulWidget {

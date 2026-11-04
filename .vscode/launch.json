@@ -1,0 +1,28 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "CrowdTech (Windows)",
+      "request": "launch",
+      "type": "dart",
+      "program": "lib/main.dart",
+      "deviceId": "windows",
+      "args": ["--dart-define-from-file=config.json"]
+    },
+    {
+      "name": "CrowdTech (Chrome, port 8080)",
+      "request": "launch",
+      "type": "dart",
+      "program": "lib/main.dart",
+      "deviceId": "chrome",
+      "args": ["--web-port", "8080", "--dart-define-from-file=config.json"]
+    },
+    {
+      "name": "CrowdTech (téléphone Android)",
+      "request": "launch",
+      "type": "dart",
+      "program": "lib/main.dart",
+      "args": ["--dart-define-from-file=config.json"]
+    }
+  ]
+}

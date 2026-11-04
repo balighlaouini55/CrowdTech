@@ -2,10 +2,10 @@ import 'package:flutter/material.dart';
 
 import '../../data/crowdtech_database.dart';
 import '../../models/crowd_models.dart';
-import '../../shared/database_error_view.dart';
 import '../../shared/account_admin_pages.dart';
 import '../../shared/data_record_details_page.dart';
 import '../../shared/data_record_list_page.dart';
+import '../../shared/database_error_view.dart';
 import '../../shared/simulation_pages.dart';
 import 'event_form_page.dart';
 import 'events_management_page.dart';

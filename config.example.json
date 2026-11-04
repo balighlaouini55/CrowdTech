@@ -1,0 +1,8 @@
+{
+  "GEMINI_API_KEY": "cle-gratuite-de-https://aistudio.google.com/apikey",
+  "GEMINI_MODEL": "",
+  "FIREBASE_API_KEY": "apiKey-de-la-console-firebase",
+  "FIREBASE_PROJECT_ID": "id-du-projet-firebase",
+  "FIREBASE_STORAGE_BUCKET": "",
+  "BADGE_SECRET": "longue-phrase-secrete-a-choisir"
+}

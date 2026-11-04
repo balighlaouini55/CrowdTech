@@ -2,9 +2,9 @@ import 'package:flutter/material.dart';
 
 import '../../data/crowdtech_database.dart';
 import '../../models/crowd_models.dart';
-import '../../shared/database_error_view.dart';
 import '../../shared/data_record_details_page.dart';
 import '../../shared/data_record_list_page.dart';
+import '../../shared/database_error_view.dart';
 import 'marketplace_cart_page.dart';
 import 'marketplace_catalog.dart';
 import 'marketplace_management_page.dart';

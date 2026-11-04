@@ -1,11 +1,14 @@
 import 'dart:async';
 
+import 'package:crowdtech/app/crowdtech_app.dart';
+import 'package:crowdtech/core/auth/account_service.dart';
+import 'package:crowdtech/core/database/crowdtech_database.dart';
+import 'package:crowdtech/shared/utils/validators.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
-import 'package:crowdtech/main.dart';
-import 'package:crowdtech/data/crowdtech_database.dart';
+import 'test_helpers.dart';
 
 Future<void> pumpDatabaseAndSettle(WidgetTester tester) async {
   await tester.pump();
@@ -13,6 +16,14 @@ Future<void> pumpDatabaseAndSettle(WidgetTester tester) async {
 }
 
 Future<void> prepareDemoDatabase() async {
+  await AccountService.register(
+    name: 'Testeur',
+    email: 'test@example.com',
+    password: 'secret123',
+    role: 'Investisseur',
+    details: const {'birthDate': '2000-04-15', 'phone': '+216 20 123 456'},
+  );
+  await AccountService.logout();
   await CrowdTechDatabase.loadSeededItems('news', const [
     {
       'title': 'L’IA générative transforme le développement',
@@ -179,18 +190,29 @@ void main() {
     await tester.ensureVisible(find.text('Mot de passe oublié ?'));
     await tester.tap(find.text('Mot de passe oublié ?'));
     await tester.pumpAndSettle();
-    await tester.enterText(find.byType(TextFormField).last, 'test@example.com');
-    await tester.tap(find.text('Envoyer la demande (démo)'));
+    final resetFields = find.byType(TextFormField);
+    await tester.enterText(resetFields.at(0), 'test@example.com');
+    // Sans preuve d'identité, le mot de passe n'est pas changé.
+    await tester.enterText(resetFields.at(1), '01/01/1990');
+    await tester.enterText(resetFields.at(2), '00000000');
+    await tester.enterText(resetFields.at(3), 'nouveau123');
+    await tester.enterText(resetFields.at(4), 'nouveau123');
+    await tester.ensureVisible(find.text('Changer le mot de passe'));
+    await tester.tap(find.text('Changer le mot de passe'));
     await tester.pumpAndSettle();
-    expect(
-      find.textContaining('Demande de réinitialisation simulée'),
-      findsOneWidget,
-    );
+    expect(find.textContaining('ne correspondent pas'), findsOneWidget);
     await tester.pump(const Duration(seconds: 5));
     await tester.pumpAndSettle();
-    await tester.pageBack();
+
+    await tester.enterText(resetFields.at(1), '15/04/2000');
+    await tester.enterText(resetFields.at(2), '+216 20 123 456');
+    await tester.tap(find.text('Changer le mot de passe'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Mot de passe modifié'), findsOneWidget);
+    await tester.pump(const Duration(seconds: 5));
     await tester.pumpAndSettle();
 
+    // L’ancien mot de passe est refusé, le nouveau fonctionne.
     await tester.enterText(
       find.byType(TextFormField).at(0),
       'test@example.com',
@@ -198,9 +220,18 @@ void main() {
     await tester.enterText(find.byType(TextFormField).at(1), 'secret123');
     await tester.tap(find.byType(ElevatedButton).first);
     await pumpDatabaseAndSettle(tester);
+    expect(find.text('Email ou mot de passe incorrect.'), findsOneWidget);
 
-    expect(find.text('Veille stratégique vérifiée'), findsOneWidget);
+    await tester.enterText(find.byType(TextFormField).at(1), 'nouveau123');
+    await tester.tap(find.byType(ElevatedButton).first);
+    await pumpDatabaseAndSettle(tester);
+
+    // Après la connexion : tableau de bord, puis onglet Actus.
+    expect(find.text('PORTEFEUILLE INVESTI'), findsOneWidget);
     expect(find.byType(NavigationBar), findsOneWidget);
+    await tester.tap(navTab('Actus'));
+    await pumpDatabaseAndSettle(tester);
+    expect(find.text('Veille stratégique vérifiée'), findsOneWidget);
     expect(find.text('Actualités tech'), findsOneWidget);
   });
 
@@ -218,12 +249,11 @@ void main() {
     await tester.enterText(find.byType(TextFormField).at(1), 'secret123');
     await tester.tap(find.byType(ElevatedButton).first);
     await pumpDatabaseAndSettle(tester);
-
-    await tester.tap(find.byIcon(Icons.trending_up_rounded));
+    await tester.tap(navTab('Crowd'));
     await pumpDatabaseAndSettle(tester);
     expect(find.text('Projets à financer'), findsOneWidget);
 
-    await tester.tap(find.byIcon(Icons.store_rounded));
+    await tester.tap(navTab('Store'));
     await pumpDatabaseAndSettle(tester);
     expect(find.text('Laptop Edge Pro'), findsOneWidget);
     await tester.enterText(find.byType(TextField), 'Drone');
@@ -233,13 +263,14 @@ void main() {
     await tester.enterText(find.byType(TextField), '');
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byIcon(Icons.event_rounded));
+    await tester.tap(navTab('Agenda'));
     await pumpDatabaseAndSettle(tester);
     expect(find.text('Tech Innovation Summit'), findsOneWidget);
 
-    await tester.tap(find.byIcon(Icons.person_rounded));
+    await tester.tap(navTab('Profil'));
     await pumpDatabaseAndSettle(tester);
-    expect(find.text('test'), findsOneWidget);
+    expect(find.text('Testeur'), findsOneWidget);
+    expect(find.text('Investisseur'), findsOneWidget);
     expect(find.text('test@example.com'), findsOneWidget);
   });
 
@@ -250,7 +281,7 @@ void main() {
     final navigator = tester.state<NavigatorState>(
       find.byType(Navigator).first,
     );
-    unawaited(navigator.pushNamed('/events'));
+    unawaited(navigator.pushNamed('/events', arguments: testAdmin));
     await pumpDatabaseAndSettle(tester);
 
     expect(find.text('Salons & conférences'), findsOneWidget);
@@ -275,7 +306,7 @@ void main() {
       find.byType(Navigator).first,
     );
 
-    unawaited(navigator.pushNamed('/news'));
+    unawaited(navigator.pushNamed('/news', arguments: testAdmin));
     await pumpDatabaseAndSettle(tester);
     await tester.tap(find.byTooltip('Autres pages actualités'));
     await tester.pumpAndSettle();
@@ -331,16 +362,25 @@ void main() {
 
     await tester.pageBack();
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Crowd'));
+    await tester.tap(navTab('Crowd'));
     await pumpDatabaseAndSettle(tester);
     await tester.tap(find.byTooltip('Autres pages crowdfunding'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Simulateur de rendement'));
     await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextFormField).first, '1000');
+    // Le choix du pays (inflation) pousse le bouton plus bas.
+    await tester.ensureVisible(find.text('Calculer la simulation'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Calculer la simulation'));
     await tester.pumpAndSettle();
-    expect(find.text('1050.00 €'), findsOneWidget);
+    await tester.scrollUntilVisible(
+      find.text('1 050 €'),
+      200,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(find.text('1 050 €'), findsOneWidget);
+    expect(find.text('+50 € de gain'), findsOneWidget);
   });
 
   testWidgets('each module can edit and delete its own content', (
@@ -361,7 +401,7 @@ void main() {
       required String sampleTitle,
       required String updatedTitle,
     }) async {
-      unawaited(navigator.pushNamed(route));
+      unawaited(navigator.pushNamed(route, arguments: testAdmin));
       await pumpDatabaseAndSettle(tester);
       await tester.tap(find.byTooltip(menuTooltip));
       await tester.pumpAndSettle();
@@ -461,8 +501,8 @@ void main() {
       'eventId': 1,
       'eventTitle': 'Tech Innovation Summit',
       'attendeeName': 'Ada Lovelace',
-      'email': 'demo@crowdtech.app',
-      'ownerKey': 'demo@crowdtech.app',
+      'email': 'admin@crowdtech.app',
+      'ownerKey': 'admin@crowdtech.app',
       'ticket': 'CT-TEST-2026',
       'createdAt': DateTime.now().toIso8601String(),
     });
@@ -471,7 +511,7 @@ void main() {
       find.byType(Navigator).first,
     );
 
-    unawaited(navigator.pushNamed('/events'));
+    unawaited(navigator.pushNamed('/events', arguments: testAdmin));
     await pumpDatabaseAndSettle(tester);
     await tester.tap(find.byTooltip('Autres pages événements'));
     await tester.pumpAndSettle();
@@ -480,7 +520,7 @@ void main() {
     await tester.tap(find.text('Tech Innovation Summit'));
     await tester.pumpAndSettle();
     expect(find.text('CT-TEST-2026'), findsOneWidget);
-    expect(find.textContaining('démonstration seulement'), findsOneWidget);
+    expect(find.textContaining('Billet de démonstration'), findsOneWidget);
 
     await tester.pageBack();
     await tester.pumpAndSettle();
@@ -504,13 +544,14 @@ void main() {
     tester,
   ) async {
     await CrowdTechDatabase.useMemoryForTesting();
+    useTallScreen(tester);
     await prepareDemoDatabase();
     await tester.pumpWidget(const CrowdTechApp());
     final navigator = tester.state<NavigatorState>(
       find.byType(Navigator).first,
     );
 
-    unawaited(navigator.pushNamed('/news'));
+    unawaited(navigator.pushNamed('/news', arguments: testAdmin));
     await pumpDatabaseAndSettle(tester);
     expect(find.text('Actualités tech'), findsOneWidget);
     await tester.tap(find.byTooltip('Ajouter une actualité'));
@@ -538,7 +579,7 @@ void main() {
       isTrue,
     );
 
-    unawaited(navigator.pushNamed('/funding'));
+    unawaited(navigator.pushNamed('/funding', arguments: testAdmin));
     await pumpDatabaseAndSettle(tester);
     await tester.tap(find.byTooltip('Ajouter un projet'));
     await tester.pumpAndSettle();
@@ -561,7 +602,7 @@ void main() {
       isTrue,
     );
 
-    unawaited(navigator.pushNamed('/marketplace'));
+    unawaited(navigator.pushNamed('/marketplace', arguments: testAdmin));
     await pumpDatabaseAndSettle(tester);
     await tester.tap(find.byTooltip('Ajouter un produit'));
     await tester.pumpAndSettle();
@@ -577,7 +618,7 @@ void main() {
           .any((item) => item['name'] == 'Clavier démo'),
       isTrue,
     );
-    unawaited(navigator.pushNamed('/events'));
+    unawaited(navigator.pushNamed('/events', arguments: testAdmin));
     await pumpDatabaseAndSettle(tester);
     await tester.tap(find.byTooltip('Ajouter un événement'));
     await tester.pumpAndSettle();
@@ -606,7 +647,7 @@ void main() {
       find.byType(Navigator).first,
     );
 
-    unawaited(navigator.pushNamed('/news'));
+    unawaited(navigator.pushNamed('/news', arguments: testAdmin));
     await pumpDatabaseAndSettle(tester);
     await tester.tap(find.byTooltip('Ajouter une actualité'));
     await tester.pumpAndSettle();
@@ -620,7 +661,7 @@ void main() {
     await tester.pageBack();
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('Crowd'));
+    await tester.tap(navTab('Crowd'));
     await pumpDatabaseAndSettle(tester);
     await tester.tap(find.byTooltip('Ajouter un projet'));
     await tester.pumpAndSettle();
@@ -638,7 +679,7 @@ void main() {
     await tester.pageBack();
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('Store'));
+    await tester.tap(navTab('Store'));
     await pumpDatabaseAndSettle(tester);
     await tester.tap(find.byTooltip('Ajouter un produit'));
     await tester.pumpAndSettle();
@@ -657,7 +698,7 @@ void main() {
     await tester.pageBack();
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('Événements'));
+    await tester.tap(navTab('Agenda'));
     await pumpDatabaseAndSettle(tester);
     await tester.tap(find.byTooltip('Ajouter un événement'));
     await tester.pumpAndSettle();
@@ -677,6 +718,7 @@ void main() {
     tester,
   ) async {
     await CrowdTechDatabase.useMemoryForTesting();
+    useTallScreen(tester);
     await prepareDemoDatabase();
     await tester.pumpWidget(const CrowdTechApp());
     await tester.ensureVisible(find.text('Se connecter'));
@@ -689,35 +731,49 @@ void main() {
     await tester.enterText(find.byType(TextFormField).at(1), 'secret123');
     await tester.tap(find.byType(ElevatedButton).first);
     await pumpDatabaseAndSettle(tester);
+    final testProfile = (await CrowdTechDatabase.getItems('profiles'))
+        .firstWhere((profile) => profile['accountKey'] == 'test@example.com');
+    await CrowdTechDatabase.updateItem(
+      'profiles',
+      testProfile['id']! as int,
+      {
+        ...testProfile,
+        'name': 'Testeur Profile',
+        'email': 'profil@example.com',
+        'phone': '+216 20 123 456',
+        'address': '10 avenue du Test',
+        'postalCode': '1000',
+        'city': 'Tunis',
+        'country': 'Tunisie',
+      }..remove('id'),
+    );
 
-    await tester.tap(find.byIcon(Icons.trending_up_rounded));
+    await tester.tap(navTab('Crowd'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Investir').first);
     await tester.pumpAndSettle();
-    await tester.enterText(find.byType(TextFormField).last, '1000');
-    await tester.tap(find.text('Enregistrer'));
+    await tester.tap(find.text('Pack Supporter'));
     await tester.pump();
-    expect(find.text('Maximum autorisé : 844.'), findsOneWidget);
-    await tester.enterText(find.byType(TextFormField).last, '2');
-    await tester.tap(find.text('Enregistrer'));
+    await tester.tap(find.textContaining('Acheter le pack Supporter'));
     await tester.pumpAndSettle();
-    expect(find.text('42090 € levés'), findsOneWidget);
+    expect(find.text('42 900 € levés'), findsOneWidget);
     expect(
       (await CrowdTechDatabase.getItems('funding')).firstWhere(
         (item) => item['title'] == 'AI Ops Dashboard',
       )['amountRaised'],
-      42090.0,
+      42900.0,
     );
     final investments = await CrowdTechDatabase.getItems('investments');
     expect(investments, hasLength(1));
-    expect(investments.single['tokens'], 2);
-    expect(investments.single['amount'], 90.0);
+    expect(investments.single['pack'], 'Supporter');
+    expect(investments.single['tokens'], 21);
+    expect(investments.single['amount'], 900.0);
     tester.testTextInput.hide();
     await tester.pumpAndSettle();
     await tester.pump(const Duration(seconds: 5));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byIcon(Icons.store_rounded));
+    await tester.tap(navTab('Store'));
     await tester.pumpAndSettle();
     final addToCart = find.byIcon(Icons.add_shopping_cart_rounded).first;
     await tester.ensureVisible(addToCart);
@@ -729,31 +785,61 @@ void main() {
     await tester.tap(find.byIcon(Icons.shopping_cart_outlined));
     await tester.pumpAndSettle();
     expect(find.text('Votre panier (1)'), findsOneWidget);
-    expect(find.textContaining('1499'), findsWidgets);
+    expect(find.textContaining('1 499'), findsWidgets);
     await tester.tap(find.text('Confirmer la commande'));
     await tester.pumpAndSettle();
+    final checkoutFields = tester
+        .widgetList<TextFormField>(find.byType(TextFormField))
+        .map((field) => field.controller!.text)
+        .toList();
+    expect(checkoutFields, [
+      'Testeur Profile',
+      'profil@example.com',
+      '+216 20 123 456',
+      '10 avenue du Test',
+      'Tunis',
+      '1000',
+    ]);
+    await tester.enterText(find.byType(TextFormField).at(0), '');
     await tester.tap(find.text('Valider'));
     await tester.pump();
     expect(find.text('Saisissez votre nom.'), findsOneWidget);
     await tester.enterText(find.byType(TextFormField).at(0), 'Ada Lovelace');
     await tester.enterText(find.byType(TextFormField).at(1), 'ada@example.com');
-    await tester.enterText(find.byType(TextFormField).at(2), '1 rue des Tests');
+    await tester.enterText(find.byType(TextFormField).at(3), '1 rue des Tests');
     await tester.tap(find.text('Valider'));
     await tester.pumpAndSettle();
     await tester.pageBack();
     await tester.pumpAndSettle();
-    expect(tester.widget<Badge>(find.byType(Badge)).isLabelVisible, isFalse);
+    expect(
+      tester
+          .widget<Badge>(
+            find.descendant(
+              of: find.byTooltip('Ouvrir le panier'),
+              matching: find.byType(Badge),
+            ),
+          )
+          .isLabelVisible,
+      isFalse,
+    );
     expect(await CrowdTechDatabase.getItems('cart'), isEmpty);
     final orders = await CrowdTechDatabase.getItems('orders');
     expect(orders, hasLength(1));
     expect(orders.single['customerName'], 'Ada Lovelace');
+    expect(orders.single['email'], 'ada@example.com');
+    expect(orders.single['phone'], '+216 20 123 456');
+    expect(orders.single['address'], '1 rue des Tests, 1000 Tunis, Tunisie');
+    expect(orders.single['street'], '1 rue des Tests');
     expect(orders.single['total'], 1499.0);
     expect(orders.single['items'], hasLength(1));
 
-    await tester.tap(find.byIcon(Icons.event_rounded));
+    await tester.tap(navTab('Agenda'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Réserver').first);
     await tester.pumpAndSettle();
+    // Formulaire prérempli avec le compte connecté.
+    expect(find.text('Testeur Profile'), findsOneWidget);
+    await tester.enterText(find.byType(TextFormField).at(0), '');
     await tester.tap(find.text('Enregistrer'));
     await tester.pump();
     expect(find.text('Saisissez votre nom.'), findsOneWidget);
@@ -768,19 +854,31 @@ void main() {
     expect(reservations.single['ticket'], startsWith('CT-'));
   });
 
-  testWidgets('news discussion filters comments and rejects invalid input', (
+  testWidgets('each article has its own discussion and validates comments', (
     tester,
   ) async {
     await CrowdTechDatabase.useMemoryForTesting();
+    useTallScreen(tester);
     await prepareDemoDatabase();
     await tester.pumpWidget(const CrowdTechApp());
     final navigator = tester.state<NavigatorState>(
       find.byType(Navigator).first,
     );
-    unawaited(navigator.pushNamed('/news'));
+    unawaited(navigator.pushNamed('/news', arguments: testAdmin));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('Participer à la discussion'));
+    // Discussion du premier article (« L’IA générative… »).
+    final discussion = find.text('Discussion').first;
+    await tester.scrollUntilVisible(
+      discussion,
+      300,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(discussion);
+    await tester.pumpAndSettle();
+    expect(find.text('Aucun commentaire sur cette actualité.'), findsOneWidget);
+    await tester.tap(find.text('Commenter'));
     await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextFormField).last, 'court');
     await tester.tap(find.text('Enregistrer'));
@@ -808,26 +906,61 @@ void main() {
       find.text('Analyse intéressante de cette actualité.'),
       findsOneWidget,
     );
-    expect(
-      (await CrowdTechDatabase.getItems('news_comments')).single['text'],
-      'Analyse intéressante de cette actualité.',
+    final news = await CrowdTechDatabase.getItems('news');
+    final iaArticle = news.firstWhere(
+      (item) => item['title'] == 'L’IA générative transforme le développement',
     );
-    final evaluationButton = find.text('Évaluer positivement').first;
+    final comment = (await CrowdTechDatabase.getItems('news_comments')).single;
+    expect(comment['text'], 'Analyse intéressante de cette actualité.');
+    expect(comment['articleId'], iaArticle['id']);
+
+    // De retour à la liste : seul cet article compte un commentaire.
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+    expect(find.text('Discussion (1)'), findsOneWidget);
+  });
+
+  testWidgets('articles are rated with stars and an optional review', (
+    tester,
+  ) async {
+    await CrowdTechDatabase.useMemoryForTesting();
+    useTallScreen(tester);
+    await prepareDemoDatabase();
+    await tester.pumpWidget(const CrowdTechApp());
+    final navigator = tester.state<NavigatorState>(
+      find.byType(Navigator).first,
+    );
+    unawaited(navigator.pushNamed('/news', arguments: testAdmin));
+    await tester.pumpAndSettle();
+
+    final rate = find.text('Noter').first;
     await tester.scrollUntilVisible(
-      evaluationButton,
+      rate,
       300,
       scrollable: find.byType(Scrollable).first,
     );
     await tester.pumpAndSettle();
-    await tester.tap(evaluationButton);
+    await tester.tap(rate);
     await tester.pumpAndSettle();
-    expect(
-      (await CrowdTechDatabase.getItems('news')).firstWhere(
-        (item) =>
-            item['title'] == 'L’IA générative transforme le développement',
-      )['credibility'],
-      97,
-    );
+
+    // Sans étoile : refusé. L’avis, lui, n’est pas obligatoire.
+    await tester.tap(find.text('Enregistrer'));
+    await tester.pump();
+    expect(find.text('Choisissez une note de 1 à 5 étoiles.'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('star-4')));
+    await tester.pump();
+    await tester.tap(find.text('Enregistrer'));
+    await tester.pumpAndSettle();
+
+    final vote = (await CrowdTechDatabase.getItems('news_votes')).single;
+    expect(vote['stars'], 4);
+    expect(vote['review'], '');
+    final rated = (await CrowdTechDatabase.getItems('news'))
+        .firstWhere((item) => item['id'] == vote['articleId']);
+    // 4 étoiles = 80 %, pondéré par la source : (96×3 + 80) / 4 = 92 %.
+    expect(rated['credibility'], 92);
+    expect(find.text('Ma note : 4'), findsOneWidget);
+    expect(find.text('4.0 · 1 avis'), findsOneWidget);
   });
 
   testWidgets('profile edit validates and updates the displayed details', (
@@ -846,7 +979,7 @@ void main() {
     await tester.enterText(find.byType(TextFormField).at(1), 'secret123');
     await tester.tap(find.byType(ElevatedButton).first);
     await pumpDatabaseAndSettle(tester);
-    await tester.tap(find.byIcon(Icons.person_rounded));
+    await tester.tap(navTab('Profil'));
     await tester.pumpAndSettle();
 
     await tester.drag(find.byType(ListView).last, const Offset(0, -450));
@@ -854,6 +987,7 @@ void main() {
     await tester.ensureVisible(find.text('Modifier mon profil'));
     await tester.tap(find.text('Modifier mon profil'));
     await tester.pumpAndSettle();
+    await fillProfileRequired(tester);
     await tester.enterText(find.byType(TextFormField).at(0), 'Grace Hopper');
     await tester.enterText(find.byType(TextFormField).at(1), 'not-an-email');
     await tester.tap(find.text('Enregistrer'));
@@ -887,26 +1021,31 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Rejoignez CrowdTech'), findsOneWidget);
-    await tester.drag(find.byType(ListView), const Offset(0, -300));
-    await tester.pumpAndSettle();
-    await tester.ensureVisible(find.byType(ElevatedButton).first);
-    await tester.tap(find.byType(ElevatedButton).first);
-    await tester.pump();
+    // Formulaire vide : les champs obligatoires sont signalés.
+    await submitRegistration(tester);
     expect(find.text('Nom requis.'), findsOneWidget);
+    expect(find.text('Email requis.'), findsOneWidget);
+    expect(find.text('Mot de passe requis.'), findsOneWidget);
+    expect(find.text('Date de naissance requise.'), findsOneWidget);
+    expect(find.text('Téléphone requis.'), findsOneWidget);
+    expect(find.text('Code postal requis.'), findsOneWidget);
 
-    await tester.enterText(find.byType(TextFormField).at(0), 'Ada Lovelace');
-    await tester.enterText(find.byType(TextFormField).at(1), 'ada@example.com');
-    await tester.enterText(find.byType(TextFormField).at(2), 'password1');
-    await tester.enterText(find.byType(TextFormField).at(3), 'different1');
-    tester.testTextInput.hide();
-    await tester.pumpAndSettle();
-    await tester.drag(find.byType(ListView), const Offset(0, -400));
-    await tester.pumpAndSettle();
-    await tester.ensureVisible(find.byType(ElevatedButton).first);
-    await tester.tap(find.byType(ElevatedButton).first);
-    await tester.pump();
+    // Mots de passe différents, âge trop jeune, conditions refusées.
+    await fillRegistrationForm(
+      tester,
+      birthDate: '01/01/2020',
+      password: 'password1',
+      confirm: 'different1',
+      acceptTerms: false,
+    );
+    await submitRegistration(tester);
     expect(
       find.text('Les mots de passe ne correspondent pas.'),
+      findsOneWidget,
+    );
+    expect(find.text('Vous devez avoir au moins 16 ans.'), findsOneWidget);
+    expect(
+      find.text('Veuillez accepter les conditions d’utilisation.'),
       findsOneWidget,
     );
   });
